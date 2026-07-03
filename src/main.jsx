@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { useState } from "react";
+import { jsPDF } from "jspdf";
 import {
   FileText,
   ImageOff,
@@ -10,7 +11,10 @@ import {
   Zap,
   Clipboard,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Download,
+  Plus,
+  Trash2
 } from "lucide-react";
 import "./styles.css";
 
@@ -23,7 +27,7 @@ const tools = [
     iconClass: "text-cyanGlow",
     ringClass: "ring-cyanGlow/25",
     buttonClass: "from-cyan-400 to-blue-500",
-    link: "#"
+    link: "#resume-builder"
   },
   {
     title: "Image Background Remover",
@@ -49,6 +53,15 @@ const tools = [
 
 const tones = ["professional", "funny", "friendly", "inspirational", "bold"];
 const platforms = ["LinkedIn", "Instagram", "X", "Facebook", "TikTok"];
+const resumeSteps = ["Profile", "Skills", "Background"];
+
+const emptyResumeForm = {
+  fullName: "",
+  contact: "",
+  skills: [""],
+  experience: "",
+  education: ""
+};
 
 function Nav() {
   return (
@@ -99,6 +112,356 @@ function ToolCard({ tool }) {
         <ArrowRight size={17} />
       </a>
     </article>
+  );
+}
+
+function addWrappedText(doc, text, x, y, maxWidth, lineHeight) {
+  const lines = doc.splitTextToSize(text, maxWidth);
+  doc.text(lines, x, y);
+  return y + lines.length * lineHeight;
+}
+
+function addPdfSection(doc, title, items, y) {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 18;
+  const maxWidth = 174;
+
+  if (y > pageHeight - 35) {
+    doc.addPage();
+    y = 20;
+  }
+
+  doc.setTextColor(14, 20, 35);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text(title.toUpperCase(), margin, y);
+  doc.setDrawColor(34, 211, 238);
+  doc.line(margin, y + 2, 192, y + 2);
+  y += 9;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(45, 55, 72);
+
+  items.forEach((item) => {
+    if (y > pageHeight - 25) {
+      doc.addPage();
+      y = 20;
+    }
+
+    y = addWrappedText(doc, `- ${item}`, margin, y, maxWidth, 5) + 3;
+  });
+
+  return y + 4;
+}
+
+function ResumeBuilder() {
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState(emptyResumeForm);
+  const [resume, setResume] = useState(null);
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const canGenerate =
+    form.fullName.trim() &&
+    form.contact.trim() &&
+    form.skills.some((skill) => skill.trim()) &&
+    form.experience.trim() &&
+    form.education.trim();
+
+  function updateField(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateSkill(index, value) {
+    setForm((current) => ({
+      ...current,
+      skills: current.skills.map((skill, skillIndex) => (skillIndex === index ? value : skill))
+    }));
+  }
+
+  function addSkill() {
+    setForm((current) => ({ ...current, skills: [...current.skills, ""] }));
+  }
+
+  function removeSkill(index) {
+    setForm((current) => ({
+      ...current,
+      skills: current.skills.length === 1 ? [""] : current.skills.filter((_, skillIndex) => skillIndex !== index)
+    }));
+  }
+
+  async function handleGenerateResume() {
+    setError("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/generate-resume", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          ...form,
+          skills: form.skills.map((skill) => skill.trim()).filter(Boolean)
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to generate resume.");
+      }
+
+      setResume(data.resume);
+    } catch (resumeError) {
+      setError(resumeError.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function downloadPdf() {
+    if (!resume) {
+      return;
+    }
+
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    doc.setFillColor(7, 10, 18);
+    doc.rect(0, 0, pageWidth, 38, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.text(resume.fullName, 18, 18);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(190, 242, 255);
+    doc.text(resume.contact, 18, 28);
+
+    let y = 50;
+    doc.setTextColor(14, 20, 35);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("PROFESSIONAL SUMMARY", 18, y);
+    doc.setDrawColor(34, 211, 238);
+    doc.line(18, y + 2, 192, y + 2);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(45, 55, 72);
+    y = addWrappedText(doc, resume.summary, 18, y + 10, 174, 5) + 8;
+
+    y = addPdfSection(doc, "Skills", [resume.skills.join(", ")], y);
+    y = addPdfSection(doc, "Experience", resume.experience, y);
+    addPdfSection(doc, "Education", resume.education, y);
+
+    const filename = `${resume.fullName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "resume"}-resume.pdf`;
+    doc.save(filename);
+  }
+
+  return (
+    <section id="resume-builder" className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8 lg:pb-24">
+      <div className="grid gap-6 rounded-lg border border-white/10 bg-white/[0.05] p-4 shadow-neon backdrop-blur sm:p-6 lg:grid-cols-[0.92fr_1.08fr] lg:p-8">
+        <div>
+          <p className="text-sm font-bold uppercase text-cyanGlow">AI Resume Builder</p>
+          <h2 className="mt-2 text-3xl font-black leading-tight text-white sm:text-4xl">Build a polished resume in minutes</h2>
+          <p className="mt-4 text-sm leading-6 text-slate-300">
+            Complete the steps, let AI sharpen the wording, then download a styled PDF instantly.
+          </p>
+
+          <div className="mt-7 grid grid-cols-3 gap-2">
+            {resumeSteps.map((label, index) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setStep(index)}
+                className={`min-h-11 rounded-lg border px-2 text-xs font-bold transition ${
+                  step === index
+                    ? "border-cyan-300/50 bg-cyan-300/[0.15] text-cyan-100"
+                    : "border-white/10 bg-white/[0.06] text-slate-300 hover:border-white/20"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-lg border border-white/10 bg-ink/70 p-4">
+            {step === 0 && (
+              <div className="grid gap-4">
+                <label className="grid gap-2">
+                  <span className="text-sm font-semibold text-slate-200">Full Name</span>
+                  <input
+                    value={form.fullName}
+                    onChange={(event) => updateField("fullName", event.target.value)}
+                    placeholder="Alex Morgan"
+                    className="min-h-12 rounded-lg border border-white/10 bg-white/[0.05] px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="text-sm font-semibold text-slate-200">Contact</span>
+                  <input
+                    value={form.contact}
+                    onChange={(event) => updateField("contact", event.target.value)}
+                    placeholder="alex@email.com | 555-0100 | New York, NY | linkedin.com/in/alex"
+                    className="min-h-12 rounded-lg border border-white/10 bg-white/[0.05] px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"
+                  />
+                </label>
+              </div>
+            )}
+
+            {step === 1 && (
+              <div className="grid gap-3">
+                <span className="text-sm font-semibold text-slate-200">Skills</span>
+                {form.skills.map((skill, index) => (
+                  <div key={index} className="flex gap-2">
+                    <input
+                      value={skill}
+                      onChange={(event) => updateSkill(index, event.target.value)}
+                      placeholder="Project management"
+                      className="min-h-12 flex-1 rounded-lg border border-white/10 bg-white/[0.05] px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeSkill(index)}
+                      className="grid size-12 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.08] text-slate-300 transition hover:border-rose-300/50 hover:text-rose-200"
+                      aria-label="Remove skill"
+                    >
+                      <Trash2 size={17} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addSkill}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-4 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/[0.15]"
+                >
+                  <Plus size={17} />
+                  Add Skill
+                </button>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="grid gap-4">
+                <label className="grid gap-2">
+                  <span className="text-sm font-semibold text-slate-200">Experience</span>
+                  <textarea
+                    value={form.experience}
+                    onChange={(event) => updateField("experience", event.target.value)}
+                    placeholder="Paste roles, achievements, metrics, projects, or responsibilities."
+                    className="min-h-32 resize-none rounded-lg border border-white/10 bg-white/[0.05] p-4 text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="text-sm font-semibold text-slate-200">Education</span>
+                  <textarea
+                    value={form.education}
+                    onChange={(event) => updateField("education", event.target.value)}
+                    placeholder="Degree, school, graduation year, coursework, honors, or certifications."
+                    className="min-h-28 resize-none rounded-lg border border-white/10 bg-white/[0.05] p-4 text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => setStep((current) => Math.max(current - 1, 0))}
+              disabled={step === 0}
+              className="inline-flex min-h-12 items-center justify-center rounded-lg border border-white/10 bg-white/[0.08] px-5 text-sm font-bold text-white transition hover:border-white/25 hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={() => (step < resumeSteps.length - 1 ? setStep(step + 1) : handleGenerateResume())}
+              disabled={isLoading || (step === resumeSteps.length - 1 && !canGenerate)}
+              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-lg bg-cyan-300 px-5 text-sm font-extrabold text-ink shadow-neon transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {step < resumeSteps.length - 1 ? "Next" : isLoading ? "Optimizing Resume..." : "Generate Resume"}
+              <Sparkles size={18} />
+            </button>
+          </div>
+
+          {error && (
+            <div className="mt-4 flex items-start gap-2 rounded-lg border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-100">
+              <AlertCircle className="mt-0.5 shrink-0" size={16} />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-white/10 bg-slate-50 p-4 text-slate-950 sm:p-6">
+          <div className="mb-5 flex flex-col justify-between gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-cyan-700">Resume Preview</p>
+              <h3 className="mt-1 text-2xl font-black">{resume?.fullName || form.fullName || "Your Name"}</h3>
+              <p className="mt-1 text-sm text-slate-600">{resume?.contact || form.contact || "Contact details"}</p>
+            </div>
+            <button
+              type="button"
+              onClick={downloadPdf}
+              disabled={!resume}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Download size={17} />
+              Download PDF
+            </button>
+          </div>
+
+          {resume ? (
+            <div className="grid gap-5 text-sm leading-6">
+              <section>
+                <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">Professional Summary</h4>
+                <p className="mt-2 text-slate-800">{resume.summary}</p>
+              </section>
+              <section>
+                <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">Skills</h4>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {resume.skills.map((skill) => (
+                    <span key={skill} className="rounded-lg bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-800">
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </section>
+              <section>
+                <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">Experience</h4>
+                <ul className="mt-2 grid gap-2">
+                  {resume.experience.map((item) => (
+                    <li key={item} className="pl-1 text-slate-800">
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              <section>
+                <h4 className="text-xs font-black uppercase tracking-wide text-slate-500">Education</h4>
+                <ul className="mt-2 grid gap-2">
+                  {resume.education.map((item) => (
+                    <li key={item} className="pl-1 text-slate-800">
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            </div>
+          ) : (
+            <div className="grid min-h-[430px] place-items-center rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center">
+              <div>
+                <FileText className="mx-auto text-cyan-600" size={42} />
+                <p className="mt-4 text-sm font-bold text-slate-700">Your AI-optimized resume will appear here.</p>
+                <p className="mt-2 text-xs leading-5 text-slate-500">Fill out each step and generate a polished preview before downloading the PDF.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -207,7 +570,7 @@ function SocialPostGenerator() {
             <button
               type="submit"
               disabled={isLoading || !topic.trim()}
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-rose-400 to-fuchsia-500 px-5 py-3 text-sm font-extrabold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-rose-400 to-fuchsia-500 px-5 py-3 text-sm font-extrabold text-ink transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? "Generating..." : "Generate"}
               <Sparkles size={18} />
@@ -232,7 +595,7 @@ function SocialPostGenerator() {
               type="button"
               onClick={handleCopy}
               disabled={!post}
-              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.08] px-3 text-sm font-semibold text-white transition hover:border-cyan-300/50 hover:bg-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-45"
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.08] px-3 text-sm font-semibold text-white transition hover:border-cyan-300/50 hover:bg-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {copied ? <CheckCircle2 size={16} className="text-limeGlow" /> : <Clipboard size={16} />}
               {copied ? "Copied" : "Copy"}
@@ -323,6 +686,8 @@ function App() {
             ))}
           </div>
         </section>
+
+        <ResumeBuilder />
 
         <SocialPostGenerator />
       </div>

@@ -12,13 +12,36 @@ const allowedPlatforms = ["LinkedIn", "Instagram", "X", "Facebook", "TikTok"];
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
-function buildPrompt({ topic, tone, platform }) {
+function buildPostPrompt({ topic, tone, platform }) {
   return [
     `Write one catchy ${platform} social media post about: "${topic}".`,
     `Tone: ${tone}.`,
     "Make it practical, original, and platform-appropriate.",
     "Include a strong hook, 1-2 short body paragraphs, a clear call to action, and 4-7 relevant hashtags.",
     "Return only the finished post text."
+  ].join("\n");
+}
+
+function buildResumePrompt({ fullName, contact, skills, experience, education }) {
+  return [
+    "You are an expert resume writer and career coach.",
+    "Rewrite and optimize the following resume data into polished, professional, ATS-friendly resume content.",
+    "Keep the candidate facts truthful. Do not invent employers, degrees, dates, or certifications.",
+    "Return valid JSON only, with this exact shape:",
+    "{",
+    '  "fullName": "string",',
+    '  "contact": "string",',
+    '  "summary": "2-3 sentence professional summary",',
+    '  "skills": ["skill"],',
+    '  "experience": ["bullet point"],',
+    '  "education": ["bullet point"]',
+    "}",
+    "",
+    `Full Name: ${fullName}`,
+    `Contact: ${contact}`,
+    `Skills: ${skills.join(", ")}`,
+    `Experience: ${experience}`,
+    `Education: ${education}`
   ].join("\n");
 }
 
@@ -46,7 +69,7 @@ function extractGeminiText(data) {
   );
 }
 
-async function generateWithOpenAI(prompt) {
+async function generateWithOpenAI(prompt, maxOutputTokens = 450) {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -57,7 +80,7 @@ async function generateWithOpenAI(prompt) {
       model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
       input: prompt,
       temperature: 0.8,
-      max_output_tokens: 450
+      max_output_tokens: maxOutputTokens
     })
   });
 
@@ -76,7 +99,7 @@ async function generateWithOpenAI(prompt) {
   return post;
 }
 
-async function generateWithGemini(prompt) {
+async function generateWithGemini(prompt, maxOutputTokens = 450) {
   const model = process.env.GEMINI_MODEL || "gemini-2.0-flash";
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.API_KEY}`,
@@ -94,7 +117,7 @@ async function generateWithGemini(prompt) {
         ],
         generationConfig: {
           temperature: 0.8,
-          maxOutputTokens: 450
+          maxOutputTokens
         }
       })
     }
@@ -113,6 +136,39 @@ async function generateWithGemini(prompt) {
   }
 
   return post;
+}
+
+async function generateAIText(prompt, maxOutputTokens = 450) {
+  return provider === "gemini"
+    ? generateWithGemini(prompt, maxOutputTokens)
+    : generateWithOpenAI(prompt, maxOutputTokens);
+}
+
+function parseJsonFromAI(text) {
+  const cleaned = text
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  return JSON.parse(match ? match[0] : cleaned);
+}
+
+function normalizeResume(resume, fallback) {
+  return {
+    fullName: String(resume.fullName || fallback.fullName).trim(),
+    contact: String(resume.contact || fallback.contact).trim(),
+    summary: String(resume.summary || "").trim(),
+    skills: Array.isArray(resume.skills) ? resume.skills.map(String).filter(Boolean) : fallback.skills,
+    experience: Array.isArray(resume.experience)
+      ? resume.experience.map(String).filter(Boolean)
+      : [String(resume.experience || fallback.experience).trim()].filter(Boolean),
+    education: Array.isArray(resume.education)
+      ? resume.education.map(String).filter(Boolean)
+      : [String(resume.education || fallback.education).trim()].filter(Boolean)
+  };
 }
 
 app.post("/api/generate-post", async (req, res) => {
@@ -141,13 +197,51 @@ app.post("/api/generate-post", async (req, res) => {
       return res.status(400).json({ error: "Invalid platform selected." });
     }
 
-    const prompt = buildPrompt({ topic, tone, platform });
-    const post = provider === "gemini" ? await generateWithGemini(prompt) : await generateWithOpenAI(prompt);
+    const prompt = buildPostPrompt({ topic, tone, platform });
+    const post = await generateAIText(prompt, 450);
 
     res.json({ post });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || "Unable to generate post." });
+  }
+});
+
+app.post("/api/generate-resume", async (req, res) => {
+  try {
+    const fullName = String(req.body.fullName || "").trim();
+    const contact = String(req.body.contact || "").trim();
+    const skills = Array.isArray(req.body.skills)
+      ? req.body.skills.map((skill) => String(skill).trim()).filter(Boolean)
+      : [];
+    const experience = String(req.body.experience || "").trim();
+    const education = String(req.body.education || "").trim();
+
+    if (!process.env.API_KEY) {
+      return res.status(500).json({ error: "Missing API_KEY environment variable." });
+    }
+
+    if (!fullName || !contact || !skills.length || !experience || !education) {
+      return res.status(400).json({ error: "Full name, contact, skills, experience, and education are required." });
+    }
+
+    if (fullName.length > 90 || contact.length > 180 || experience.length > 2000 || education.length > 1200) {
+      return res.status(400).json({ error: "Resume input is too long. Please shorten the content and try again." });
+    }
+
+    if (skills.length > 20) {
+      return res.status(400).json({ error: "Please provide 20 skills or fewer." });
+    }
+
+    const fallback = { fullName, contact, skills, experience, education };
+    const prompt = buildResumePrompt(fallback);
+    const aiText = await generateAIText(prompt, 1200);
+    const resume = normalizeResume(parseJsonFromAI(aiText), fallback);
+
+    res.json({ resume });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || "Unable to generate resume." });
   }
 });
 
