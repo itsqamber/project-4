@@ -1,6 +1,8 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { connectDB } from "./config/db.js";
+import { limitDailyGenerations } from "./middleware/rateLimitUsage.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -8,6 +10,8 @@ const provider = (process.env.AI_PROVIDER || "openai").toLowerCase();
 
 const allowedTones = ["professional", "funny", "friendly", "inspirational", "bold"];
 const allowedPlatforms = ["LinkedIn", "Instagram", "X", "Facebook", "TikTok"];
+
+await connectDB();
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -171,7 +175,7 @@ function normalizeResume(resume, fallback) {
   };
 }
 
-app.post("/api/generate-post", async (req, res) => {
+app.post("/api/generate-post", limitDailyGenerations("social-post-generator"), async (req, res) => {
   try {
     const topic = String(req.body.topic || "").trim();
     const tone = String(req.body.tone || "").trim().toLowerCase();
@@ -200,14 +204,14 @@ app.post("/api/generate-post", async (req, res) => {
     const prompt = buildPostPrompt({ topic, tone, platform });
     const post = await generateAIText(prompt, 450);
 
-    res.json({ post });
+    res.json({ post, usage: req.usage });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || "Unable to generate post." });
   }
 });
 
-app.post("/api/generate-resume", async (req, res) => {
+app.post("/api/generate-resume", limitDailyGenerations("resume-builder"), async (req, res) => {
   try {
     const fullName = String(req.body.fullName || "").trim();
     const contact = String(req.body.contact || "").trim();
@@ -238,7 +242,7 @@ app.post("/api/generate-resume", async (req, res) => {
     const aiText = await generateAIText(prompt, 1200);
     const resume = normalizeResume(parseJsonFromAI(aiText), fallback);
 
-    res.json({ resume });
+    res.json({ resume, usage: req.usage });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || "Unable to generate resume." });
