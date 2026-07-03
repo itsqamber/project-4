@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { jsPDF } from "jspdf";
 import {
   FileText,
@@ -14,7 +14,10 @@ import {
   AlertCircle,
   Download,
   Plus,
-  Trash2
+  Trash2,
+  UploadCloud,
+  Loader2,
+  Image as ImageIcon
 } from "lucide-react";
 import "./styles.css";
 
@@ -27,7 +30,7 @@ const tools = [
     iconClass: "text-cyanGlow",
     ringClass: "ring-cyanGlow/25",
     buttonClass: "from-cyan-400 to-blue-500",
-    link: "#resume-builder"
+    id: "resume-builder"
   },
   {
     title: "Image Background Remover",
@@ -37,7 +40,7 @@ const tools = [
     iconClass: "text-limeGlow",
     ringClass: "ring-limeGlow/25",
     buttonClass: "from-lime-300 to-emerald-500",
-    link: "#"
+    id: "background-remover"
   },
   {
     title: "AI Social Media Post Generator",
@@ -47,7 +50,7 @@ const tools = [
     iconClass: "text-roseGlow",
     ringClass: "ring-roseGlow/25",
     buttonClass: "from-rose-400 to-fuchsia-500",
-    link: "#social-generator"
+    id: "post-generator"
   }
 ];
 
@@ -92,27 +95,187 @@ function Nav() {
   );
 }
 
-function ToolCard({ tool }) {
+function ToolCard({ tool, isActive, onUseTool }) {
   const Icon = tool.icon;
 
   return (
     <article
-      className={`group flex h-full flex-col rounded-lg border border-white/10 bg-white/[0.055] p-5 ${tool.shadow} transition duration-300 hover:-translate-y-1 hover:border-white/20 sm:p-6`}
+      className={`group flex h-full flex-col rounded-lg border bg-white/[0.055] p-5 ${tool.shadow} transition duration-300 hover:-translate-y-1 sm:p-6 ${
+        isActive ? "border-cyan-300/50" : "border-white/10 hover:border-white/20"
+      }`}
     >
       <div className={`mb-6 grid size-12 place-items-center rounded-lg bg-white/10 ring-1 ${tool.ringClass}`}>
         <Icon className={tool.iconClass} size={24} strokeWidth={2.2} />
       </div>
       <h3 className="text-xl font-semibold leading-tight text-white">{tool.title}</h3>
       <p className="mt-3 flex-1 text-sm leading-6 text-slate-300">{tool.description}</p>
-      <a
-        href={tool.link}
+      <button
+        type="button"
+        onClick={() => onUseTool(tool.id)}
         className={`mt-6 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-gradient-to-r ${tool.buttonClass} px-4 py-3 text-sm font-bold text-ink transition group-hover:brightness-110`}
       >
         Use Tool
         <ArrowRight size={17} />
-      </a>
+      </button>
     </article>
   );
+}
+
+function ImageBackgroundRemover() {
+  const [imageFile, setImageFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [error, setError] = useState("");
+
+  function handleFile(file) {
+    setError("");
+
+    if (!file) {
+      return;
+    }
+
+    const allowedTypes = ["image/png", "image/jpeg"];
+
+    if (!allowedTypes.includes(file.type)) {
+      setError("Please upload a PNG or JPG image.");
+      return;
+    }
+
+    setImageFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+  }
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
+  function handleDrop(event) {
+    event.preventDefault();
+    setIsDragging(false);
+    handleFile(event.dataTransfer.files?.[0]);
+  }
+
+  async function handleRemoveBackground() {
+    if (!imageFile) {
+      setError("Upload an image before removing the background.");
+      return;
+    }
+
+    setError("");
+    setIsRemoving(true);
+
+    window.setTimeout(() => {
+      setIsRemoving(false);
+    }, 1400);
+  }
+
+  return (
+    <section id="background-remover" className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8 lg:pb-24">
+      <div className="grid gap-6 rounded-lg border border-lime-300/20 bg-white/[0.05] p-4 shadow-neon-lime backdrop-blur sm:p-6 lg:grid-cols-[0.95fr_1.05fr] lg:p-8">
+        <div>
+          <p className="text-sm font-bold uppercase text-limeGlow">Image Background Remover</p>
+          <h2 className="mt-2 text-3xl font-black leading-tight text-white sm:text-4xl">Upload an image and remove the background</h2>
+          <p className="mt-4 text-sm leading-6 text-slate-300">
+            Drop in a PNG or JPG, preview it instantly, then send it through the remover flow with a clean neon action.
+          </p>
+
+          <label
+            onDragEnter={(event) => {
+              event.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+            className={`mt-7 grid min-h-[220px] cursor-pointer place-items-center rounded-lg border border-dashed p-6 text-center transition ${
+              isDragging
+                ? "border-lime-300 bg-lime-300/[0.12] shadow-neon-lime"
+                : "border-lime-300/30 bg-ink/70 hover:border-lime-300/60 hover:bg-lime-300/[0.08]"
+            }`}
+          >
+            <input
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={(event) => handleFile(event.target.files?.[0])}
+              className="sr-only"
+            />
+            <span className="grid justify-items-center">
+              <span className="grid size-14 place-items-center rounded-lg border border-lime-300/25 bg-lime-300/10 text-limeGlow">
+                <UploadCloud size={28} />
+              </span>
+              <span className="mt-4 text-sm font-bold text-white">Drag and drop your image here</span>
+              <span className="mt-2 text-xs leading-5 text-slate-400">or click to browse PNG and JPG files</span>
+              {imageFile && <span className="mt-3 text-xs font-semibold text-limeGlow">{imageFile.name}</span>}
+            </span>
+          </label>
+
+          {error && (
+            <div className="mt-4 flex items-start gap-2 rounded-lg border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-100">
+              <AlertCircle className="mt-0.5 shrink-0" size={16} />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleRemoveBackground}
+            disabled={!imageFile || isRemoving}
+            className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-lime-300 to-emerald-500 px-5 text-sm font-extrabold text-ink shadow-neon-lime transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+          >
+            {isRemoving ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
+            {isRemoving ? "Removing Background..." : "Remove Background"}
+          </button>
+        </div>
+
+        <div className="rounded-lg border border-white/10 bg-ink/70 p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-white">Image Preview</p>
+              <p className="mt-1 text-xs text-slate-400">Uploaded image appears here before processing.</p>
+            </div>
+            <span className="grid size-10 place-items-center rounded-lg border border-lime-300/25 bg-lime-300/10 text-limeGlow">
+              <ImageIcon size={19} />
+            </span>
+          </div>
+
+          <div className="grid min-h-[360px] place-items-center overflow-hidden rounded-lg border border-dashed border-lime-300/25 bg-white/[0.045]">
+            {previewUrl ? (
+              <img src={previewUrl} alt="Uploaded preview" className="max-h-[420px] w-full object-contain p-3" />
+            ) : (
+              <div className="p-6 text-center">
+                <ImageOff className="mx-auto text-limeGlow" size={48} />
+                <p className="mt-4 text-sm font-bold text-white">No image uploaded yet</p>
+                <p className="mt-2 max-w-sm text-xs leading-5 text-slate-400">
+                  Choose a PNG or JPG to see the preview here.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ActiveToolView({ activeTool }) {
+  if (activeTool === "resume-builder") {
+    return <ResumeBuilder />;
+  }
+
+  if (activeTool === "background-remover") {
+    return <ImageBackgroundRemover />;
+  }
+
+  if (activeTool === "post-generator") {
+    return <SocialPostGenerator />;
+  }
+
+  return null;
 }
 
 function addWrappedText(doc, text, x, y, maxWidth, lineHeight) {
@@ -615,6 +778,8 @@ function SocialPostGenerator() {
 }
 
 function App() {
+  const [activeTool, setActiveTool] = useState("resume-builder");
+
   return (
     <main className="min-h-screen overflow-hidden bg-ink text-slate-100">
       <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_20%_15%,rgba(34,211,238,0.20),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(251,113,133,0.15),transparent_26%),radial-gradient(circle_at_55%_85%,rgba(163,230,53,0.12),transparent_30%)]" />
@@ -682,14 +847,17 @@ function App() {
 
           <div className="grid gap-5 md:grid-cols-3">
             {tools.map((tool) => (
-              <ToolCard key={tool.title} tool={tool} />
+              <ToolCard
+                key={tool.id}
+                tool={tool}
+                isActive={activeTool === tool.id}
+                onUseTool={setActiveTool}
+              />
             ))}
           </div>
         </section>
 
-        <ResumeBuilder />
-
-        <SocialPostGenerator />
+        <ActiveToolView activeTool={activeTool} />
       </div>
     </main>
   );
