@@ -1,8 +1,12 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { connectDB } from "./config/db.js";
 import { limitDailyGenerations } from "./middleware/rateLimitUsage.js";
+import { requireAuth } from "./middleware/auth.js";
+import User from "./models/User.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -15,6 +19,43 @@ await connectDB();
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
+
+function addMonths(date, months) {
+  const trialEnd = new Date(date);
+  trialEnd.setMonth(trialEnd.getMonth() + months);
+  return trialEnd;
+}
+
+function createToken(user) {
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret) {
+    throw new Error("Missing JWT_SECRET environment variable.");
+  }
+
+  return jwt.sign(
+    {
+      userId: user._id.toString(),
+      email: user.email,
+      role: user.role
+    },
+    secret,
+    { expiresIn: "7d" }
+  );
+}
+
+function serializeUser(user) {
+  return {
+    id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    plan: user.plan,
+    trialStartedAt: user.trialStartedAt,
+    trialEndsAt: user.trialEndsAt,
+    subscriptionStatus: user.subscriptionStatus
+  };
+}
 
 function buildPostPrompt({ topic, tone, platform }) {
   return [
@@ -175,7 +216,86 @@ function normalizeResume(resume, fallback) {
   };
 }
 
-app.post("/api/generate-post", limitDailyGenerations("social-post-generator"), async (req, res) => {
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const name = String(req.body.name || "").trim();
+    const email = String(req.body.email || "").trim().toLowerCase();
+    const password = String(req.body.password || "");
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Name, email, and password are required." });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters." });
+    }
+
+    const existingUser = await User.findOne({ email });
+
+    if (existingUser) {
+      return res.status(409).json({ error: "A user already exists with this email." });
+    }
+
+    const now = new Date();
+    const passwordHash = await bcrypt.hash(password, 12);
+    const user = await User.create({
+      name,
+      email,
+      passwordHash,
+      plan: "trial",
+      trialStartedAt: now,
+      trialEndsAt: addMonths(now, 2),
+      subscriptionStatus: "trialing",
+      lastLoginAt: now
+    });
+
+    const token = createToken(user);
+
+    return res.status(201).json({ token, user: serializeUser(user) });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ error: "A user already exists with this email." });
+    }
+
+    console.error(error);
+    return res.status(500).json({ error: error.message || "Unable to register user." });
+  }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const email = String(req.body.email || "").trim().toLowerCase();
+    const password = String(req.body.password || "");
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required." });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({ error: "Invalid email or password." });
+    }
+
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+
+    if (!passwordMatches) {
+      return res.status(401).json({ error: "Invalid email or password." });
+    }
+
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    const token = createToken(user);
+
+    return res.json({ token, user: serializeUser(user) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: error.message || "Unable to log in." });
+  }
+});
+
+app.post("/api/generate-post", requireAuth, limitDailyGenerations("social-post-generator"), async (req, res) => {
   try {
     const topic = String(req.body.topic || "").trim();
     const tone = String(req.body.tone || "").trim().toLowerCase();
@@ -211,7 +331,7 @@ app.post("/api/generate-post", limitDailyGenerations("social-post-generator"), a
   }
 });
 
-app.post("/api/generate-resume", limitDailyGenerations("resume-builder"), async (req, res) => {
+app.post("/api/generate-resume", requireAuth, limitDailyGenerations("resume-builder"), async (req, res) => {
   try {
     const fullName = String(req.body.fullName || "").trim();
     const contact = String(req.body.contact || "").trim();

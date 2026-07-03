@@ -70,37 +70,16 @@ const emptyResumeForm = {
   education: ""
 };
 
-const USERS_STORAGE_KEY = "ai-micro-tools-users";
 const SESSION_STORAGE_KEY = "ai-micro-tools-session";
-
-function addMonths(date, months) {
-  const trialEnd = new Date(date);
-  trialEnd.setMonth(trialEnd.getMonth() + months);
-  return trialEnd;
-}
-
-function createClientId() {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
-  }
-
-  return `user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function getStoredUsers() {
-  try {
-    return JSON.parse(localStorage.getItem(USERS_STORAGE_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
-
-function saveStoredUsers(users) {
-  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-}
+const TOKEN_STORAGE_KEY = "ai-micro-tools-token";
+const API_BASE_URL = "http://localhost:3001";
 
 function getStoredSession() {
   try {
+    if (!localStorage.getItem(TOKEN_STORAGE_KEY)) {
+      return null;
+    }
+
     return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || "null");
   } catch {
     return null;
@@ -111,10 +90,22 @@ function saveStoredSession(user) {
   localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
 }
 
+function saveAuthSession({ token, user }) {
+  localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  saveStoredSession(user);
+}
+
+function getAuthHeaders() {
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 function AuthPage({ onAuthenticated }) {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isSignup = mode === "signup";
 
@@ -122,55 +113,44 @@ function AuthPage({ onAuthenticated }) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    setIsSubmitting(true);
 
     const email = form.email.trim().toLowerCase();
     const password = form.password.trim();
-    const users = getStoredUsers();
 
     if (!email || !password || (isSignup && !form.name.trim())) {
       setError("Please complete all required fields.");
+      setIsSubmitting(false);
       return;
     }
 
-    if (isSignup) {
-      if (users.some((userRecord) => userRecord.email === email)) {
-        setError("An account already exists for this email.");
-        return;
+    try {
+      const endpoint = isSignup ? "/api/auth/register" : "/api/auth/login";
+      const body = isSignup ? { name: form.name.trim(), email, password } : { email, password };
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Authentication failed.");
       }
 
-      const now = new Date();
-      const newUser = {
-        id: createClientId(),
-        name: form.name.trim(),
-        email,
-        password,
-        plan: "trial",
-        trialStartedAt: now.toISOString(),
-        trialEndsAt: addMonths(now, 2).toISOString()
-      };
-
-      saveStoredUsers([...users, newUser]);
-      const session = { ...newUser };
-      delete session.password;
-      saveStoredSession(session);
-      onAuthenticated(session);
-      return;
+      saveAuthSession(data);
+      onAuthenticated(data.user);
+    } catch (authError) {
+      setError(authError.message);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const existingUser = users.find((userRecord) => userRecord.email === email && userRecord.password === password);
-
-    if (!existingUser) {
-      setError("Invalid email or password.");
-      return;
-    }
-
-    const session = { ...existingUser };
-    delete session.password;
-    saveStoredSession(session);
-    onAuthenticated(session);
   }
 
   return (
@@ -271,10 +251,11 @@ function AuthPage({ onAuthenticated }) {
 
             <button
               type="submit"
-              className="mt-2 inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-cyan-300 px-5 text-sm font-extrabold text-ink shadow-neon transition hover:bg-cyan-200"
+              disabled={isSubmitting}
+              className="mt-2 inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-cyan-300 px-5 text-sm font-extrabold text-ink shadow-neon transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isSignup ? "Start Free Trial" : "Log In"}
-              {isSignup ? <UserPlus size={18} /> : <ArrowRight size={18} />}
+              {isSubmitting ? "Please wait..." : isSignup ? "Start Free Trial" : "Log In"}
+              {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : isSignup ? <UserPlus size={18} /> : <ArrowRight size={18} />}
             </button>
           </form>
         </div>
@@ -586,7 +567,8 @@ function ResumeBuilder() {
       const response = await fetch("/api/generate-resume", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
         },
         body: JSON.stringify({
           ...form,
@@ -871,7 +853,8 @@ function SocialPostGenerator() {
       const response = await fetch("/api/generate-post", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...getAuthHeaders()
         },
         body: JSON.stringify({ topic, tone, platform })
       });
@@ -1007,6 +990,7 @@ function App() {
 
   function handleLogout() {
     localStorage.removeItem(SESSION_STORAGE_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
     setCurrentUser(null);
   }
 
