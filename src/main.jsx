@@ -8,7 +8,6 @@ import {
   Megaphone,
   Sparkles,
   ArrowRight,
-  Zap,
   Clipboard,
   CheckCircle2,
   AlertCircle,
@@ -17,7 +16,12 @@ import {
   Trash2,
   UploadCloud,
   Loader2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  User,
+  Lock,
+  LogOut,
+  Mail,
+  UserPlus
 } from "lucide-react";
 import "./styles.css";
 
@@ -66,7 +70,220 @@ const emptyResumeForm = {
   education: ""
 };
 
-function Nav() {
+const USERS_STORAGE_KEY = "ai-micro-tools-users";
+const SESSION_STORAGE_KEY = "ai-micro-tools-session";
+
+function addMonths(date, months) {
+  const trialEnd = new Date(date);
+  trialEnd.setMonth(trialEnd.getMonth() + months);
+  return trialEnd;
+}
+
+function createClientId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `user-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function getStoredUsers() {
+  try {
+    return JSON.parse(localStorage.getItem(USERS_STORAGE_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredUsers(users) {
+  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+}
+
+function getStoredSession() {
+  try {
+    return JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredSession(user) {
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
+}
+
+function AuthPage({ onAuthenticated }) {
+  const [mode, setMode] = useState("login");
+  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [error, setError] = useState("");
+
+  const isSignup = mode === "signup";
+
+  function updateForm(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    setError("");
+
+    const email = form.email.trim().toLowerCase();
+    const password = form.password.trim();
+    const users = getStoredUsers();
+
+    if (!email || !password || (isSignup && !form.name.trim())) {
+      setError("Please complete all required fields.");
+      return;
+    }
+
+    if (isSignup) {
+      if (users.some((userRecord) => userRecord.email === email)) {
+        setError("An account already exists for this email.");
+        return;
+      }
+
+      const now = new Date();
+      const newUser = {
+        id: createClientId(),
+        name: form.name.trim(),
+        email,
+        password,
+        plan: "trial",
+        trialStartedAt: now.toISOString(),
+        trialEndsAt: addMonths(now, 2).toISOString()
+      };
+
+      saveStoredUsers([...users, newUser]);
+      const session = { ...newUser };
+      delete session.password;
+      saveStoredSession(session);
+      onAuthenticated(session);
+      return;
+    }
+
+    const existingUser = users.find((userRecord) => userRecord.email === email && userRecord.password === password);
+
+    if (!existingUser) {
+      setError("Invalid email or password.");
+      return;
+    }
+
+    const session = { ...existingUser };
+    delete session.password;
+    saveStoredSession(session);
+    onAuthenticated(session);
+  }
+
+  return (
+    <main className="min-h-screen overflow-hidden bg-ink text-slate-100">
+      <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_20%_15%,rgba(34,211,238,0.20),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(251,113,133,0.15),transparent_26%),radial-gradient(circle_at_55%_85%,rgba(163,230,53,0.12),transparent_30%)]" />
+      <section className="relative z-10 mx-auto grid min-h-screen max-w-7xl items-center gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_0.9fr] lg:px-8">
+        <div>
+          <div className="mb-6 inline-flex items-center gap-2 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-sm font-semibold text-cyan-100">
+            <Sparkles size={16} className="text-cyanGlow" />
+            Premium AI SaaS access
+          </div>
+          <h1 className="max-w-3xl text-5xl font-black leading-[1.02] text-white sm:text-6xl">
+            Sign in to unlock your AI tools
+          </h1>
+          <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
+            Create an account to start a 2-month free trial and access Resume Builder, Background Remover, and Post Generator.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-white/10 bg-white/[0.055] p-5 shadow-neon backdrop-blur sm:p-7">
+          <div className="mb-6 grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-ink/70 p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setError("");
+              }}
+              className={`min-h-11 rounded-lg text-sm font-bold transition ${
+                mode === "login" ? "bg-cyan-300 text-ink" : "text-slate-300 hover:bg-white/[0.08] hover:text-white"
+              }`}
+            >
+              Log In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("signup");
+                setError("");
+              }}
+              className={`min-h-11 rounded-lg text-sm font-bold transition ${
+                mode === "signup" ? "bg-cyan-300 text-ink" : "text-slate-300 hover:bg-white/[0.08] hover:text-white"
+              }`}
+            >
+              Sign Up
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="grid gap-4">
+            {isSignup && (
+              <label className="grid gap-2">
+                <span className="text-sm font-semibold text-slate-200">Full Name</span>
+                <span className="flex min-h-12 items-center gap-3 rounded-lg border border-white/10 bg-ink/70 px-4 focus-within:border-cyan-300/60 focus-within:ring-2 focus-within:ring-cyan-300/20">
+                  <User size={18} className="text-cyanGlow" />
+                  <input
+                    value={form.name}
+                    onChange={(event) => updateForm("name", event.target.value)}
+                    placeholder="Alex Morgan"
+                    className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
+                  />
+                </span>
+              </label>
+            )}
+
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-slate-200">Email</span>
+              <span className="flex min-h-12 items-center gap-3 rounded-lg border border-white/10 bg-ink/70 px-4 focus-within:border-cyan-300/60 focus-within:ring-2 focus-within:ring-cyan-300/20">
+                <Mail size={18} className="text-cyanGlow" />
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(event) => updateForm("email", event.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
+                />
+              </span>
+            </label>
+
+            <label className="grid gap-2">
+              <span className="text-sm font-semibold text-slate-200">Password</span>
+              <span className="flex min-h-12 items-center gap-3 rounded-lg border border-white/10 bg-ink/70 px-4 focus-within:border-cyan-300/60 focus-within:ring-2 focus-within:ring-cyan-300/20">
+                <Lock size={18} className="text-cyanGlow" />
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={(event) => updateForm("password", event.target.value)}
+                  placeholder="Enter your password"
+                  className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
+                />
+              </span>
+            </label>
+
+            {error && (
+              <div className="flex items-start gap-2 rounded-lg border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-100">
+                <AlertCircle className="mt-0.5 shrink-0" size={16} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="mt-2 inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-cyan-300 px-5 text-sm font-extrabold text-ink shadow-neon transition hover:bg-cyan-200"
+            >
+              {isSignup ? "Start Free Trial" : "Log In"}
+              {isSignup ? <UserPlus size={18} /> : <ArrowRight size={18} />}
+            </button>
+          </form>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function Nav({ user, onLogout }) {
   return (
     <header className="sticky top-0 z-20 border-b border-white/10 bg-ink/75 backdrop-blur-xl">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
@@ -83,13 +300,20 @@ function Nav() {
           <a className="transition hover:text-white" href="#pricing">Pricing</a>
         </div>
 
-        <a
-          href="#tools"
-          className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-cyan-300/50 hover:bg-cyan-300/10"
-        >
-          Launch
-          <Zap size={16} />
-        </a>
+        <div className="flex items-center gap-3">
+          <div className="hidden text-right sm:block">
+            <p className="text-xs font-semibold text-white">{user.name || user.email}</p>
+            <p className="text-[11px] text-cyan-100">Trial access</p>
+          </div>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:border-cyan-300/50 hover:bg-cyan-300/10"
+          >
+            Logout
+            <LogOut size={16} />
+          </button>
+        </div>
       </nav>
     </header>
   );
@@ -779,12 +1003,22 @@ function SocialPostGenerator() {
 
 function App() {
   const [activeTool, setActiveTool] = useState("resume-builder");
+  const [currentUser, setCurrentUser] = useState(() => getStoredSession());
+
+  function handleLogout() {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    setCurrentUser(null);
+  }
+
+  if (!currentUser) {
+    return <AuthPage onAuthenticated={setCurrentUser} />;
+  }
 
   return (
     <main className="min-h-screen overflow-hidden bg-ink text-slate-100">
       <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_20%_15%,rgba(34,211,238,0.20),transparent_28%),radial-gradient(circle_at_80%_10%,rgba(251,113,133,0.15),transparent_26%),radial-gradient(circle_at_55%_85%,rgba(163,230,53,0.12),transparent_30%)]" />
       <div className="relative z-10">
-        <Nav />
+        <Nav user={currentUser} onLogout={handleLogout} />
 
         <section className="mx-auto grid min-h-[calc(100vh-73px)] max-w-7xl items-center gap-12 px-4 py-14 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8 lg:py-20">
           <div>
