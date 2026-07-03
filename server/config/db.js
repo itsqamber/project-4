@@ -5,14 +5,15 @@ export async function connectDB() {
 
   if (!uri) {
     console.warn("MONGODB_URI is not set. Usage limits will not work until MongoDB is configured.");
-    return;
+    return false;
   }
 
   try {
     await mongoose.connect(uri);
     console.log("MongoDB connected");
+    return true;
   } catch (error) {
-    console.error("MongoDB connection failed:", error.message);
-    process.exit(1);
+    console.error("MongoDB connection failed. Continuing without database access:", error.message);
+    return false;
   }
 }
