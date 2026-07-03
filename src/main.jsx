@@ -21,7 +21,11 @@ import {
   Lock,
   LogOut,
   Mail,
-  UserPlus
+  UserPlus,
+  Crown,
+  Wand2,
+  Video,
+  Palette
 } from "lucide-react";
 import "./styles.css";
 
@@ -61,6 +65,23 @@ const tools = [
 const tones = ["professional", "funny", "friendly", "inspirational", "bold"];
 const platforms = ["LinkedIn", "Instagram", "X", "Facebook", "TikTok"];
 const resumeSteps = ["Profile", "Skills", "Background"];
+const premiumTabs = [
+  {
+    id: "background-changer",
+    label: "AI Background Changer",
+    icon: Palette
+  },
+  {
+    id: "text-to-image",
+    label: "Text to Image",
+    icon: Wand2
+  },
+  {
+    id: "text-to-video",
+    label: "Text to Video",
+    icon: Video
+  }
+];
 
 const emptyResumeForm = {
   fullName: "",
@@ -481,6 +502,309 @@ function ActiveToolView({ activeTool }) {
   }
 
   return null;
+}
+
+function PremiumToolsWorkspace() {
+  const [activePremiumTab, setActivePremiumTab] = useState("background-changer");
+  const [changerFile, setChangerFile] = useState(null);
+  const [changerPreviewUrl, setChangerPreviewUrl] = useState("");
+  const [changerPrompt, setChangerPrompt] = useState("");
+  const [isChangerDragging, setIsChangerDragging] = useState(false);
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [imageAspectRatio, setImageAspectRatio] = useState("1:1");
+  const [videoPrompt, setVideoPrompt] = useState("");
+  const [videoDuration, setVideoDuration] = useState("5s");
+  const [premiumError, setPremiumError] = useState("");
+
+  function handleChangerFile(file) {
+    setPremiumError("");
+
+    if (!file) {
+      return;
+    }
+
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
+      setPremiumError("Please upload a PNG or JPG image for the background changer.");
+      return;
+    }
+
+    setChangerFile(file);
+    setChangerPreviewUrl(URL.createObjectURL(file));
+  }
+
+  useEffect(() => {
+    return () => {
+      if (changerPreviewUrl) {
+        URL.revokeObjectURL(changerPreviewUrl);
+      }
+    };
+  }, [changerPreviewUrl]);
+
+  function logBackgroundChanger() {
+    console.log("AI Background Changer", {
+      imageName: changerFile?.name || null,
+      prompt: changerPrompt
+    });
+  }
+
+  function logTextToImage() {
+    console.log("Text to Image Generator", {
+      prompt: imagePrompt,
+      aspectRatio: imageAspectRatio
+    });
+  }
+
+  function logTextToVideo() {
+    console.log("Text to Video Generator", {
+      prompt: videoPrompt,
+      duration: videoDuration
+    });
+  }
+
+  return (
+    <section id="premium-tools" className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8 lg:pb-24">
+      <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-lg border border-fuchsia-300/25 bg-fuchsia-300/10 px-3 py-2 text-sm font-bold text-fuchsia-100">
+            <Crown size={16} className="text-roseGlow" />
+            Premium AI Studio
+          </div>
+          <h2 className="mt-3 text-3xl font-black text-white sm:text-4xl">Advanced creation tools</h2>
+        </div>
+        <p className="max-w-xl text-sm leading-6 text-slate-300">
+          New premium modules for image editing, image generation, and video generation are ready for API wiring.
+        </p>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[270px_1fr]">
+        <aside className="rounded-lg border border-white/10 bg-white/[0.05] p-3 shadow-neon backdrop-blur">
+          <div className="mb-3 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-3">
+            <p className="flex items-center gap-2 text-xs font-black uppercase text-cyan-100">
+              <Lock size={14} />
+              Premium Trial
+            </p>
+            <p className="mt-2 text-sm font-bold text-white">Free Trial Active: 2 Months Remaining</p>
+          </div>
+
+          <div className="grid gap-2">
+            {premiumTabs.map((tab) => {
+              const Icon = tab.icon;
+
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActivePremiumTab(tab.id)}
+                  className={`flex min-h-12 items-center gap-3 rounded-lg border px-3 text-left text-sm font-bold transition ${
+                    activePremiumTab === tab.id
+                      ? "border-fuchsia-300/50 bg-fuchsia-300/[0.14] text-white"
+                      : "border-white/10 bg-white/[0.04] text-slate-300 hover:border-white/20 hover:bg-white/[0.08]"
+                  }`}
+                >
+                  <Icon size={18} className={activePremiumTab === tab.id ? "text-roseGlow" : "text-slate-400"} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        <div className="rounded-lg border border-white/10 bg-white/[0.05] p-4 shadow-neon backdrop-blur sm:p-6 lg:p-8">
+          {activePremiumTab === "background-changer" && (
+            <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+              <div>
+                <p className="text-sm font-bold uppercase text-limeGlow">AI Background Changer</p>
+                <h3 className="mt-2 text-2xl font-black text-white">Replace an image background with a prompt</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-300">
+                  Upload an image and describe the new background style you want.
+                </p>
+
+                <label
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setIsChangerDragging(true);
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDragLeave={() => setIsChangerDragging(false)}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setIsChangerDragging(false);
+                    handleChangerFile(event.dataTransfer.files?.[0]);
+                  }}
+                  className={`mt-6 grid min-h-[190px] cursor-pointer place-items-center rounded-lg border border-dashed p-5 text-center transition ${
+                    isChangerDragging
+                      ? "border-lime-300 bg-lime-300/[0.12] shadow-neon-lime"
+                      : "border-lime-300/30 bg-ink/70 hover:border-lime-300/60 hover:bg-lime-300/[0.08]"
+                  }`}
+                >
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    onChange={(event) => handleChangerFile(event.target.files?.[0])}
+                    className="sr-only"
+                  />
+                  <span className="grid justify-items-center">
+                    <UploadCloud className="text-limeGlow" size={32} />
+                    <span className="mt-3 text-sm font-bold text-white">Upload source image</span>
+                    <span className="mt-1 text-xs text-slate-400">PNG or JPG</span>
+                    {changerFile && <span className="mt-3 text-xs font-semibold text-limeGlow">{changerFile.name}</span>}
+                  </span>
+                </label>
+
+                <label className="mt-4 grid gap-2">
+                  <span className="text-sm font-semibold text-slate-200">Background Prompt</span>
+                  <input
+                    value={changerPrompt}
+                    onChange={(event) => setChangerPrompt(event.target.value)}
+                    placeholder="cyberpunk city background"
+                    className="min-h-12 rounded-lg border border-white/10 bg-ink/70 px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/60 focus:ring-2 focus:ring-lime-300/20"
+                  />
+                </label>
+
+                {premiumError && (
+                  <div className="mt-4 flex items-start gap-2 rounded-lg border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-100">
+                    <AlertCircle className="mt-0.5 shrink-0" size={16} />
+                    <span>{premiumError}</span>
+                  </div>
+                )}
+
+                <div className="mt-5 rounded-lg border border-fuchsia-300/20 bg-fuchsia-300/10 p-3 text-xs font-semibold text-fuchsia-100">
+                  <Lock className="mr-2 inline" size={14} />
+                  Premium generation is included during your free trial.
+                </div>
+
+                <button
+                  type="button"
+                  onClick={logBackgroundChanger}
+                  className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-lime-300 to-emerald-500 px-5 text-sm font-extrabold text-ink shadow-neon-lime transition hover:brightness-110 sm:w-auto"
+                >
+                  Change Background ✨
+                  <Wand2 size={18} />
+                </button>
+              </div>
+
+              <div className="rounded-lg border border-white/10 bg-ink/70 p-4">
+                <p className="text-sm font-semibold text-white">Source Preview</p>
+                <div className="mt-4 grid min-h-[340px] place-items-center overflow-hidden rounded-lg border border-dashed border-lime-300/25 bg-white/[0.045]">
+                  {changerPreviewUrl ? (
+                    <img src={changerPreviewUrl} alt="Background changer upload preview" className="max-h-[400px] w-full object-contain p-3" />
+                  ) : (
+                    <div className="p-6 text-center">
+                      <ImageIcon className="mx-auto text-limeGlow" size={46} />
+                      <p className="mt-4 text-sm font-bold text-white">Preview appears here</p>
+                      <p className="mt-2 text-xs text-slate-400">Upload an image to test the state flow.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activePremiumTab === "text-to-image" && (
+            <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+              <div>
+                <p className="text-sm font-bold uppercase text-cyanGlow">Text to Image Generator</p>
+                <h3 className="mt-2 text-2xl font-black text-white">Turn a prompt into a premium visual</h3>
+                <label className="mt-6 grid gap-2">
+                  <span className="text-sm font-semibold text-slate-200">Image Prompt</span>
+                  <textarea
+                    value={imagePrompt}
+                    onChange={(event) => setImagePrompt(event.target.value)}
+                    placeholder="A glossy futuristic AI workspace with neon reflections"
+                    className="min-h-40 resize-none rounded-lg border border-white/10 bg-ink/70 p-4 text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"
+                  />
+                </label>
+                <label className="mt-4 grid gap-2">
+                  <span className="text-sm font-semibold text-slate-200">Aspect Ratio</span>
+                  <select
+                    value={imageAspectRatio}
+                    onChange={(event) => setImageAspectRatio(event.target.value)}
+                    className="min-h-12 rounded-lg border border-white/10 bg-ink/70 px-4 text-sm text-white outline-none transition focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/20"
+                  >
+                    <option value="1:1">1:1 Square</option>
+                    <option value="16:9">16:9 Widescreen</option>
+                  </select>
+                </label>
+                <div className="mt-5 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-3 text-xs font-semibold text-cyan-100">
+                  <Lock className="mr-2 inline" size={14} />
+                  Premium image models unlock after generation APIs are connected.
+                </div>
+                <button
+                  type="button"
+                  onClick={logTextToImage}
+                  className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-cyan-300 to-blue-500 px-5 text-sm font-extrabold text-ink shadow-neon transition hover:brightness-110 sm:w-auto"
+                >
+                  Generate Image ✨
+                  <Wand2 size={18} />
+                </button>
+              </div>
+
+              <div className="grid min-h-[360px] place-items-center rounded-lg border border-dashed border-cyan-300/25 bg-ink/70 p-6 text-center">
+                <div>
+                  <ImageIcon className="mx-auto text-cyanGlow" size={50} />
+                  <p className="mt-4 text-sm font-bold text-white">Generated image preview</p>
+                  <p className="mt-2 max-w-sm text-xs leading-5 text-slate-400">
+                    The button logs the prompt and aspect ratio for now.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activePremiumTab === "text-to-video" && (
+            <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+              <div>
+                <p className="text-sm font-bold uppercase text-roseGlow">Text to Video Generator</p>
+                <h3 className="mt-2 text-2xl font-black text-white">Draft short AI video concepts</h3>
+                <label className="mt-6 grid gap-2">
+                  <span className="text-sm font-semibold text-slate-200">Video Prompt</span>
+                  <textarea
+                    value={videoPrompt}
+                    onChange={(event) => setVideoPrompt(event.target.value)}
+                    placeholder="A cinematic product reveal for an AI writing assistant"
+                    className="min-h-40 resize-none rounded-lg border border-white/10 bg-ink/70 p-4 text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-rose-300/60 focus:ring-2 focus:ring-rose-300/20"
+                  />
+                </label>
+                <label className="mt-4 grid gap-2">
+                  <span className="text-sm font-semibold text-slate-200">Duration</span>
+                  <select
+                    value={videoDuration}
+                    onChange={(event) => setVideoDuration(event.target.value)}
+                    className="min-h-12 rounded-lg border border-white/10 bg-ink/70 px-4 text-sm text-white outline-none transition focus:border-rose-300/60 focus:ring-2 focus:ring-rose-300/20"
+                  >
+                    <option value="5s">5s</option>
+                    <option value="10s">10s</option>
+                  </select>
+                </label>
+                <div className="mt-5 rounded-lg border border-rose-300/20 bg-rose-300/10 p-3 text-xs font-semibold text-rose-100">
+                  <Lock className="mr-2 inline" size={14} />
+                  Premium video generation will use your paid-plan credits.
+                </div>
+                <button
+                  type="button"
+                  onClick={logTextToVideo}
+                  className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-rose-400 to-fuchsia-500 px-5 text-sm font-extrabold text-ink shadow-neon-rose transition hover:brightness-110 sm:w-auto"
+                >
+                  Generate Video 🎬
+                  <Video size={18} />
+                </button>
+              </div>
+
+              <div className="grid min-h-[360px] place-items-center rounded-lg border border-dashed border-rose-300/25 bg-ink/70 p-6 text-center">
+                <div>
+                  <Video className="mx-auto text-roseGlow" size={52} />
+                  <p className="mt-4 text-sm font-bold text-white">Video placeholder/API preview</p>
+                  <p className="mt-2 max-w-sm text-xs leading-5 text-slate-400">
+                    The button logs the prompt and duration for now.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function addWrappedText(doc, text, x, y, maxWidth, lineHeight) {
@@ -1006,9 +1330,15 @@ function App() {
 
         <section className="mx-auto grid min-h-[calc(100vh-73px)] max-w-7xl items-center gap-12 px-4 py-14 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8 lg:py-20">
           <div>
-            <div className="mb-6 inline-flex items-center gap-2 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-sm font-semibold text-cyan-100">
-              <Sparkles size={16} className="text-cyanGlow" />
-              Fast, focused, browser-based AI
+            <div className="mb-6 flex flex-wrap gap-3">
+              <div className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-sm font-semibold text-cyan-100">
+                <Sparkles size={16} className="text-cyanGlow" />
+                Fast, focused, browser-based AI
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-lg border border-fuchsia-300/25 bg-fuchsia-300/10 px-3 py-2 text-sm font-bold text-fuchsia-100">
+                <Crown size={16} className="text-roseGlow" />
+                Free Trial Active: 2 Months Remaining
+              </div>
             </div>
             <h1 className="max-w-4xl text-5xl font-black leading-[1.02] text-white sm:text-6xl lg:text-7xl">
               Free Instant AI Tools
@@ -1076,6 +1406,8 @@ function App() {
         </section>
 
         <ActiveToolView activeTool={activeTool} />
+
+        <PremiumToolsWorkspace />
       </div>
     </main>
   );
