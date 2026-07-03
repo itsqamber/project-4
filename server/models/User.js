@@ -24,6 +24,23 @@ const userSchema = new mongoose.Schema(
       enum: ["user", "admin"],
       default: "user"
     },
+    plan: {
+      type: String,
+      enum: ["trial", "premium"],
+      default: "trial"
+    },
+    trialStartedAt: {
+      type: Date,
+      default: Date.now
+    },
+    trialEndsAt: {
+      type: Date
+    },
+    subscriptionStatus: {
+      type: String,
+      enum: ["trialing", "active", "expired"],
+      default: "trialing"
+    },
     lastLoginAt: {
       type: Date
     },
